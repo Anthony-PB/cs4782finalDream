@@ -1,13 +1,27 @@
 # model.py
+# Purpose: loads/freezes/saves all of the model components
 import torch
 from diffusers import (
-    StableDiffusionPipeline,
-    UNet2DConditionModel,
-    AutoencoderKL,
-    DDPMScheduler
+    StableDiffusionPipeline, # wraps all components for easy inference
+    UNet2DConditionModel, # the noise predictor - the only thing being fine-tuned
+    AutoencoderKL, # VAE: compresses images to/from latent space
+    DDPMScheduler # controls the noise schedule during training
 )
 from transformers import CLIPTextModel, CLIPTokenizer
-
+# CLIP is the text encoder. It converts your text prompt into embeddings (encoder_hidden_states) that guide that UNet's denoising.
+# CLIPTokenizer turns raw text into token IDs first.
+# runwayml/stable-diffusion-v1-5/
+#   ├── tokenizer/                                                                                                                                                
+#   │   ├── vocab.json                                                                                                                                            
+#   │   └── merges.txt                                                                                                                                            
+#   ├── text_encoder/
+#   │   └── pytorch_model.bin
+#   ├── vae/
+#   │   └── diffusion_pytorch_model.bin
+#   ├── unet/
+#   │   └── diffusion_pytorch_model.bin
+#   └── scheduler/
+#       └── scheduler_config.json
 MODEL_ID = "runwayml/stable-diffusion-v1-5"
 
 def load_models(device, dtype=torch.float16):
@@ -15,40 +29,34 @@ def load_models(device, dtype=torch.float16):
     Load all components. Returns them individually
     so each script has explicit control over what it freezes.
     """
-    # TODO 1: Load tokenizer
-
-    # TODO 2: Load text encoder
-    
-    # TODO 3: Load VAE
-
-    # TODO 4: Load UNet — this is the one being fine-tuned
-
-    # TODO 5: Load scheduler
-
+    tokenizer = CLIPTokenizer.from_pretrained(MODEL_ID, subfolder = "tokenizer")
+    text_encoder = CLIPTextModel.from_pretrained(MODEL_ID, subfolder = "text_encoder", torch_dtype=dtype).to(device)
+    vae = AutoencoderKL.from_pretrained(MODEL_ID, subfolder = "vae", torch_dtype=dtype).to(device)
+    unet = UNet2DConditionModel.from_pretrained(MODEL_ID, subfolder = "unet", torch_dtype=dtype).to(device)
+    scheduler = DDPMScheduler.from_pretrained(MODEL_ID, subfolder = "scheduler")
     return tokenizer, text_encoder, vae, unet, scheduler
 
 
 def freeze_component(component):
     """
-    TODO 6: One clean reusable function to freeze any component.
-    Why is this better than writing requires_grad_(False) 
-    everywhere?
+    One clean reusable function to freeze any component.
     """
-    pass
+    component.requires_grad_(False)
 
 
 def save_unet(unet, output_dir: str):
     """
-    TODO 7: Save only the UNet weights.
-    What format should we use and why?
+    Save only the UNet weights.
     """
-    pass
+    torch.save(unet.state_dict(), f"{output_dir}/unet.pt")
 
 
 def load_finetuned_unet(output_dir: str, device, dtype=torch.float16):
     """
-    TODO 8: Load base UNet then overwrite with fine-tuned weights.
-    Why do we load the base first rather than just loading 
-    the saved weights directly?
+    Load base UNet then overwrite with fine-tuned weights.
     """
-    pass
+    model = UNet2DConditionModel.from_pretrained(MODEL_ID, subfolder = "unet", torch_dtype = dtype)
+    save = torch.load(f"{output_dir}/unet.pt")
+    model.load_state_dict(save)
+    model.to(device)
+    return model
