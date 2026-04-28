@@ -2,12 +2,19 @@ import torch
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-from model import freeze_component, DreamBoothModel, inject_lora, lora_parameters, DEFAULT_TARGET_MODULES
+from model import (
+    freeze_component,
+    DreamBoothModel,
+    inject_lora,
+    lora_parameters,
+    DEFAULT_TARGET_MODULES,
+)
 from data import DreamBoothDataset
 from inference import checkpoint, validate
 from torch.amp import autocast, GradScaler
 
 scaler = GradScaler()
+
 
 # This function is to turn the dataloader Dictionaries into batched tensors
 def collate_fn(examples):
@@ -23,31 +30,32 @@ def collate_fn(examples):
     pixel_values = torch.stack(input_images)
     pixel_values = pixel_values.to(memory_format=torch.contiguous_format).float()
 
-    return {
-        "pixel_values": pixel_values,
-        "prompts": prompts
-    }
+    return {"pixel_values": pixel_values, "prompts": prompts}
 
 
 def dreambooth_loss(
-    unet,                           # the model being trained
-    scheduler,                      # owns the αt, σt noise tables
-    subject_latents,                # the 3-5 dog images encoded by VAE
+    unet,  # the model being trained
+    scheduler,  # owns the αt, σt noise tables
+    subject_latents,  # the 3-5 dog images encoded by VAE
     subject_encoder_hidden_states,  # embeddings of "a [V] dog"
-    prior_latents,                  # generated generic dog images encoded by VAE
-    prior_encoder_hidden_states,    # embeddings of "a dog"
+    prior_latents,  # generated generic dog images encoded by VAE
+    prior_encoder_hidden_states,  # embeddings of "a dog"
     device,
-    lam: float = 1.0,               # λ in Equation 2 — weights prior loss
+    lam: float = 1.0,  # λ in Equation 2 — weights prior loss
 ):
     """
     L_DB = E[||eps_theta(z_t, t, c) - eps||^2]
          + lambda * E[||eps_theta(z_pr_t, t, c_pr) - eps||^2]
     """
-    bsz = subject_latents.shape[0] # subject images in batch
-    bsz_pr = prior_latents.shape[0] # prior images in batch
+    bsz = subject_latents.shape[0]  # subject images in batch
+    bsz_pr = prior_latents.shape[0]  # prior images in batch
 
-    t = torch.randint(0, scheduler.config.num_train_timesteps, (bsz,), device=device).long()
-    t_pr = torch.randint(0, scheduler.config.num_train_timesteps, (bsz_pr,), device=device).long()
+    t = torch.randint(
+        0, scheduler.config.num_train_timesteps, (bsz,), device=device
+    ).long()
+    t_pr = torch.randint(
+        0, scheduler.config.num_train_timesteps, (bsz_pr,), device=device
+    ).long()
 
     noise = torch.randn_like(subject_latents)
     noise_pr = torch.randn_like(prior_latents)
@@ -56,13 +64,18 @@ def dreambooth_loss(
     # Based on the noise scheduler add noise to the images inputs.
     z_pr_t = scheduler.add_noise(prior_latents, noise_pr, t_pr)
 
-    noise_pred = unet(z_t, t, encoder_hidden_states=subject_encoder_hidden_states).sample
-    noise_pred_pr = unet(z_pr_t, t_pr, encoder_hidden_states=prior_encoder_hidden_states).sample
+    noise_pred = unet(
+        z_t, t, encoder_hidden_states=subject_encoder_hidden_states
+    ).sample
+    noise_pred_pr = unet(
+        z_pr_t, t_pr, encoder_hidden_states=prior_encoder_hidden_states
+    ).sample
 
     loss_subject = F.mse_loss(noise_pred, noise, reduction="mean")
     loss_prior = F.mse_loss(noise_pred_pr, noise_pr, reduction="mean")
 
     return loss_subject + lam * loss_prior
+
 
 def forward(vae, text_encoder, tokenizer, pixel_values, prompts, device, dtype):
     """
@@ -80,7 +93,7 @@ def forward(vae, text_encoder, tokenizer, pixel_values, prompts, device, dtype):
             padding="max_length",
             max_length=tokenizer.model_max_length,
             truncation=True,
-            return_tensors="pt"
+            return_tensors="pt",
         )
         encoder_hidden_states = text_encoder(text_inputs.input_ids.to(device))[0]
 
@@ -88,10 +101,10 @@ def forward(vae, text_encoder, tokenizer, pixel_values, prompts, device, dtype):
 
 
 def training_loop(
-    instance_dir: str,              # path to your 3-5 subject images
-    class_dir: str,                 # path to generated prior images
-    instance_prompt: str,           # e.g. "a sks dog"
-    class_prompt: str,              # e.g. "a dog"
+    instance_dir: str,  # path to your 3-5 subject images
+    class_dir: str,  # path to generated prior images
+    instance_prompt: str,  # e.g. "a sks dog"
+    class_prompt: str,  # e.g. "a dog"
     output_dir: str = "checkpoints",
     validation_dir: str = "validation",
     num_steps: int = 800,
@@ -112,8 +125,13 @@ def training_loop(
     freeze_component(model.vae)
 
     if use_lora:
-        freeze_component(model.unet)    # freeze base weights; only adapters train
-        inject_lora(model.unet, rank=lora_rank, alpha=lora_alpha, target_modules=lora_target_modules)
+        freeze_component(model.unet)  # freeze base weights; only adapters train
+        inject_lora(
+            model.unet,
+            rank=lora_rank,
+            alpha=lora_alpha,
+            target_modules=lora_target_modules,
+        )
         train_params = lora_parameters(model.unet)
     else:
         train_params = model.unet.parameters()  # full fine-tune
@@ -127,7 +145,9 @@ def training_loop(
         instance_prompt=instance_prompt,
         class_prompt=class_prompt,
     )
-    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, collate_fn=collate_fn)
+    dataloader = DataLoader(
+        dataset, batch_size=batch_size, shuffle=True, collate_fn=collate_fn
+    )
     dataloader_iter = iter(dataloader)
 
     print(f"Starting DreamBooth training for {num_steps} steps...")
@@ -142,19 +162,25 @@ def training_loop(
 
         # collate_fn concatenates [instance..., class...] along batch dim
         pixel_values = batch["pixel_values"]  # [2*bsz, C, H, W]
-        prompts = batch["prompts"]            # list of 2*bsz strings
+        prompts = batch["prompts"]  # list of 2*bsz strings
         bsz = pixel_values.shape[0] // 2
 
         # Encode images and prompts into latents and text embeddings
         latents, encoder_hidden_states = forward(
-            model.vae, model.text_encoder, model.tokenizer, pixel_values, prompts, device, dtype
+            model.vae,
+            model.text_encoder,
+            model.tokenizer,
+            pixel_values,
+            prompts,
+            device,
+            dtype,
         )
 
         # Split stream A (subject) and stream B (prior)
-        subject_latents               = latents[:bsz]
-        prior_latents                 = latents[bsz:]
+        subject_latents = latents[:bsz]
+        prior_latents = latents[bsz:]
         subject_encoder_hidden_states = encoder_hidden_states[:bsz]
-        prior_encoder_hidden_states   = encoder_hidden_states[bsz:]
+        prior_encoder_hidden_states = encoder_hidden_states[bsz:]
 
         with autocast(device, dtype=dtype):
             loss = dreambooth_loss(
@@ -178,7 +204,15 @@ def training_loop(
             checkpoint(model.unet, output_dir, step, use_lora=use_lora)
 
         if step % validate_every == 0:
-            validate(model.unet, instance_prompt, validation_dir, step, device, dtype)
+            validate(
+                model.unet,
+                instance_prompt,
+                validation_dir,
+                step,
+                device,
+                dtype,
+                compute_metrics=True,
+            )
 
     # Save final weights
     checkpoint(model.unet, output_dir, num_steps, use_lora=use_lora)
