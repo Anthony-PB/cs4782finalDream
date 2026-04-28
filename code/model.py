@@ -52,11 +52,11 @@ class DreamBoothModel:
         self.unet = UNet2DConditionModel.from_pretrained(MODEL_ID, subfolder="unet", torch_dtype=dtype).to(device)
         self.scheduler = DDPMScheduler.from_pretrained(MODEL_ID, subfolder="scheduler")
 
-    def load_finetuned_unet(self, output_dir: str, device, dtype=torch.float16):
+    def load_finetuned_unet(self, output_dir: str, device):
         """
         Load base UNet then overwrite with fine-tuned weights.
         """
-        self.unet = UNet2DConditionModel.from_pretrained(MODEL_ID, subfolder="unet", torch_dtype=dtype)
+        self.unet = UNet2DConditionModel.from_pretrained(MODEL_ID, subfolder="unet")
         save = torch.load(f"{output_dir}/unet.pt")
         self.unet.load_state_dict(save)
         self.unet.to(device)
