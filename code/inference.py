@@ -2,6 +2,7 @@ import os
 import torch
 from diffusers import StableDiffusionPipeline
 from model import DreamBoothModel, save_lora, save_unet
+from metrics import compute_clip_t
 
 
 def checkpoint(unet, output_dir: str, step: int, use_lora: bool = True):
@@ -15,7 +16,16 @@ def checkpoint(unet, output_dir: str, step: int, use_lora: bool = True):
     print(f"Checkpoint saved at step {step} -> {step_dir}")
 
 
-def validate(unet, prompt: str, output_dir: str, step: int, device: str, dtype=torch.float16, num_images: int = 4):
+def validate(
+    unet,
+    prompt: str,
+    output_dir: str,
+    step: int,
+    device: str,
+    dtype=torch.float16,
+    num_images: int = 4,
+    compute_metrics: bool = False,
+):
     os.makedirs(output_dir, exist_ok=True)
 
     model = DreamBoothModel(device=device, dtype=dtype)
@@ -28,7 +38,7 @@ def validate(unet, prompt: str, output_dir: str, step: int, device: str, dtype=t
         vae=model.vae,
         text_encoder=model.text_encoder,
         tokenizer=model.tokenizer,
-        unet=model.unet,          # inject the live training UNet instead of the base one
+        unet=model.unet,  # inject the live training UNet instead of the base one
         scheduler=model.scheduler,
         safety_checker=None,
         feature_extractor=None,
@@ -37,17 +47,31 @@ def validate(unet, prompt: str, output_dir: str, step: int, device: str, dtype=t
 
     # No gradients needed during generation
     with torch.no_grad():
+        images = []
         for i in range(num_images):
             image = pipe(prompt, num_inference_steps=50).images[0]
             # Filename encodes the step so you can track visual progress over time
             image.save(os.path.join(output_dir, f"step_{step}_{i:02d}.jpg"))
+            images.append(image)
+
+        if compute_metrics:
+            clip_t = compute_clip_t(images, prompt)
+            print(f"Validation CLIP-T at step {step}: {clip_t:.3f}")
 
     # Must switch back — forgetting this leaves the UNet in eval mode for the rest of training
     unet.train()
     print(f"Validation images saved to {output_dir}")
 
 
-def run_inference(checkpoint_dir: str, prompt: str, output_dir: str, device: str, dtype=torch.float16, num_images: int = 4):
+def run_inference(
+    checkpoint_dir: str,
+    prompt: str,
+    output_dir: str,
+    device: str,
+    dtype=torch.float16,
+    num_images: int = 4,
+    compute_metrics: bool = False,
+):
     # Post-training: loads saved weights from disk rather than a live training UNet
     os.makedirs(output_dir, exist_ok=True)
 
@@ -67,9 +91,15 @@ def run_inference(checkpoint_dir: str, prompt: str, output_dir: str, device: str
     ).to(device)
 
     with torch.no_grad():
+        images = []
         for i in range(num_images):
             image = pipe(prompt, num_inference_steps=50).images[0]
             image.save(os.path.join(output_dir, f"{i:02d}.jpg"))
+            images.append(image)
+
+        if compute_metrics:
+            clip_t = compute_clip_t(images, prompt)
+            print(f"Inference CLIP-T: {clip_t:.3f}")
 
     print(f"Saved {num_images} images to {output_dir}")
 
