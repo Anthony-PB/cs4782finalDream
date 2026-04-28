@@ -5,6 +5,9 @@ from tqdm import tqdm
 from model import freeze_component, DreamBoothModel, inject_lora, lora_parameters, DEFAULT_TARGET_MODULES
 from data import DreamBoothDataset
 from inference import checkpoint, validate
+from torch.amp import autocast, GradScaler
+
+scaler = GradScaler()
 
 # This function is to turn the dataloader Dictionaries into batched tensors
 def collate_fn(examples):
@@ -153,20 +156,23 @@ def training_loop(
         subject_encoder_hidden_states = encoder_hidden_states[:bsz]
         prior_encoder_hidden_states   = encoder_hidden_states[bsz:]
 
-        loss = dreambooth_loss(
-            unet=model.unet,
-            scheduler=model.scheduler,
-            subject_latents=subject_latents,
-            subject_encoder_hidden_states=subject_encoder_hidden_states,
-            prior_latents=prior_latents,
-            prior_encoder_hidden_states=prior_encoder_hidden_states,
-            device=device,
-            lam=lam,
-        )
+        with autocast(device, dtype=dtype):
+            loss = dreambooth_loss(
+                unet=model.unet,
+                scheduler=model.scheduler,
+                subject_latents=subject_latents,
+                subject_encoder_hidden_states=subject_encoder_hidden_states,
+                prior_latents=prior_latents,
+                prior_encoder_hidden_states=prior_encoder_hidden_states,
+                device=device,
+                lam=lam,
+            )
 
+        # <-- MODIFIED: Use the scaler to backward the loss and step the optimizer
         optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
+        scaler.scale(loss).backward()
+        scaler.step(optimizer)
+        scaler.update()
 
         if step % checkpoint_every == 0:
             checkpoint(model.unet, output_dir, step, use_lora=use_lora)

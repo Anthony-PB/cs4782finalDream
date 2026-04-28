@@ -104,7 +104,7 @@ class DreamBoothModel:
         self.unet = UNet2DConditionModel.from_pretrained(MODEL_ID, subfolder="unet", torch_dtype=dtype).to(device)
         self.scheduler = DDPMScheduler.from_pretrained(MODEL_ID, subfolder="scheduler")
 
-    def load_finetuned_unet(self, output_dir: str, device, dtype=torch.float16, rank: int = 4, alpha: int = 4):
+    def load_finetuned_unet(self, output_dir: str, device, rank: int = 4, alpha: int = 4):
         """
         Inject LoRA structure into the base UNet, then load the saved LoRA adapter weights.
         """
