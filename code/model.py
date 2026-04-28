@@ -1,4 +1,3 @@
-# model.py
 # Purpose: loads/freezes/saves all of the model components
 import torch
 from diffusers import (
@@ -12,9 +11,9 @@ from transformers import CLIPTextModel, CLIPTokenizer
 # CLIP is the text encoder. It converts your text prompt into embeddings (encoder_hidden_states) that guide that UNet's denoising.
 # CLIPTokenizer turns raw text into token IDs first.
 # runwayml/stable-diffusion-v1-5/
-#   ├── tokenizer/                                                                                                                                                
-#   │   ├── vocab.json                                                                                                                                            
-#   │   └── merges.txt                                                                                                                                            
+#   ├── tokenizer/
+#   │   ├── vocab.json
+#   │   └── merges.txt
 #   ├── text_encoder/
 #   │   └── pytorch_model.bin
 #   ├── vae/
