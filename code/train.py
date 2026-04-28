@@ -99,20 +99,24 @@ def training_loop(
     validate_every: int = 200,
     device: str = "cuda",
     dtype=torch.float16,
+    use_lora: bool = True,
     lora_rank: int = 4,
     lora_alpha: int = 4,
     lora_target_modules: set = DEFAULT_TARGET_MODULES,
 ):
-    # Load all components; inject LoRA into unet; freeze everything else
     model = DreamBoothModel(device=device, dtype=dtype)
     freeze_component(model.text_encoder)
     freeze_component(model.vae)
-    freeze_component(model.unet)        # freeze all base UNet weights
-    inject_lora(model.unet, rank=lora_rank, alpha=lora_alpha, target_modules=lora_target_modules)
-    model.unet.train()
 
-    # Only the LoRA adapter parameters are trained (~thousands vs ~860M)
-    optimizer = torch.optim.AdamW(lora_parameters(model.unet), lr=lr)
+    if use_lora:
+        freeze_component(model.unet)    # freeze base weights; only adapters train
+        inject_lora(model.unet, rank=lora_rank, alpha=lora_alpha, target_modules=lora_target_modules)
+        train_params = lora_parameters(model.unet)
+    else:
+        train_params = model.unet.parameters()  # full fine-tune
+
+    model.unet.train()
+    optimizer = torch.optim.AdamW(train_params, lr=lr)
 
     dataset = DreamBoothDataset(
         instance_dir=instance_dir,
@@ -165,13 +169,13 @@ def training_loop(
         optimizer.step()
 
         if step % checkpoint_every == 0:
-            checkpoint(model.unet, output_dir, step)
+            checkpoint(model.unet, output_dir, step, use_lora=use_lora)
 
         if step % validate_every == 0:
             validate(model.unet, instance_prompt, validation_dir, step, device, dtype)
 
     # Save final weights
-    checkpoint(model.unet, output_dir, num_steps)
+    checkpoint(model.unet, output_dir, num_steps, use_lora=use_lora)
     print("Training complete.")
 
 
