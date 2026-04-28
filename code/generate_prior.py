@@ -1,9 +1,9 @@
-# generate_prior.py
 import os
 import torch
 from diffusers import StableDiffusionPipeline
 from tqdm import tqdm
-from model import load_models, freeze_component
+from model import DreamBoothModel, freeze_component
+
 
 def generate_prior_images(
     class_prompt: str,
@@ -15,23 +15,20 @@ def generate_prior_images(
     os.makedirs(output_dir, exist_ok=True)
 
     # Step 1: Load all components via model.py
-    tokenizer, text_encoder, vae, unet, scheduler = load_models(
-        device=device, 
-        dtype=dtype
-    )
+    model = DreamBoothModel(device=device, dtype=dtype)
 
     # Step 2: Freeze everything — why all components here
-    freeze_component(text_encoder)
-    freeze_component(vae)
-    freeze_component(unet)
+    freeze_component(model.text_encoder)
+    freeze_component(model.vae)
+    freeze_component(model.unet)
 
     # Step 3: Wrap into pipeline for easy inference
     pipe = StableDiffusionPipeline(
-        vae=vae,
-        text_encoder=text_encoder,
-        tokenizer=tokenizer,
-        unet=unet,
-        scheduler=scheduler,
+        vae=model.vae,
+        text_encoder=model.text_encoder,
+        tokenizer=model.tokenizer,
+        unet=model.unet,
+        scheduler=model.scheduler,
         safety_checker=None,
         feature_extractor=None,
         requires_safety_checker=False
