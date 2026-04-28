@@ -2,6 +2,26 @@ import torch
 import torch.nn.functional as F
 
 
+# This function is to turn the dataloader Dictionaries into batched tensors
+def collate_fn(examples):
+    # Extract Stream A
+    input_images = [example["instance_image"] for example in examples]
+    prompts = [example["instance_prompt"] for example in examples]
+
+    # Append Stream B
+    input_images += [example["class_image"] for example in examples]
+    prompts += [example["class_prompt"] for example in examples]
+
+    # Stack into a single tensor for the GPU
+    pixel_values = torch.stack(input_images)
+    pixel_values = pixel_values.to(memory_format=torch.contiguous_format).float()
+
+    return {
+        "pixel_values": pixel_values,
+        "prompts": prompts
+    }
+
+
 def dreambooth_loss(
     unet,
     scheduler,
