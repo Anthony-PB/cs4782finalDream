@@ -146,7 +146,7 @@ def training_loop(
         subject_encoder_hidden_states = encoder_hidden_states[:bsz]
         prior_encoder_hidden_states   = encoder_hidden_states[bsz:]
 
-        with autocast("cuda", dtype=dtype):
+        with autocast(device, dtype=dtype):
             loss = dreambooth_loss(
                 unet=model.unet,
                 scheduler=model.scheduler,
