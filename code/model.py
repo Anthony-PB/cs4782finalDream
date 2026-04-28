@@ -1,5 +1,6 @@
 # Purpose: loads/freezes/saves all of the model components
 import torch
+import torch.nn as nn
 from diffusers import (
     StableDiffusionPipeline,  # wraps all components for easy inference
     UNet2DConditionModel,  # the noise predictor - the only thing being fine-tuned
@@ -39,6 +40,57 @@ def save_unet(unet, output_dir: str):
     torch.save(unet.state_dict(), f"{output_dir}/unet.pt")
 
 
+class LoRALinear(nn.Module):
+    """
+    Wraps a frozen nn.Linear with two low-rank trainable matrices A and B.
+    The effective weight update is B(A(x)) * scale, starting from zero (B init to 0).
+    """
+    def __init__(self, linear: nn.Linear, rank: int = 4, alpha: int = 4):
+        super().__init__()
+        self.linear = linear
+        self.lora_A = nn.Linear(linear.in_features, rank, bias=False)
+        self.lora_B = nn.Linear(rank, linear.out_features, bias=False)
+        self.scale = alpha / rank
+        nn.init.normal_(self.lora_A.weight, std=0.01)
+        nn.init.zeros_(self.lora_B.weight)
+
+    def forward(self, x):
+        return self.linear(x) + self.lora_B(self.lora_A(x)) * self.scale
+
+
+DEFAULT_TARGET_MODULES = {"to_q", "to_k", "to_v", "to_out"}
+
+
+def inject_lora(unet, rank: int = 4, alpha: int = 4, target_modules: set = DEFAULT_TARGET_MODULES):
+    """
+    Replace attention projection linears in every attention block with LoRALinear wrappers.
+    target_modules controls which projections are adapted — any subset of:
+        {"to_q", "to_k", "to_v", "to_out"}
+    e.g. target_modules={"to_q", "to_v"} is a common lightweight choice.
+    """
+    for module in unet.modules():
+        if hasattr(module, 'to_q'):
+            if "to_q"   in target_modules:
+                module.to_q      = LoRALinear(module.to_q,      rank, alpha)
+            if "to_k"   in target_modules:
+                module.to_k      = LoRALinear(module.to_k,      rank, alpha)
+            if "to_v"   in target_modules:
+                module.to_v      = LoRALinear(module.to_v,      rank, alpha)
+            if "to_out" in target_modules:
+                module.to_out[0] = LoRALinear(module.to_out[0], rank, alpha)
+
+
+def lora_parameters(unet):
+    """Return only the LoRA trainable parameters (lora_A and lora_B weights)."""
+    return [p for name, p in unet.named_parameters() if "lora_" in name]
+
+
+def save_lora(unet, output_dir: str):
+    """Save only the LoRA adapter weights (~3-6 MB vs ~3.4 GB for the full UNet)."""
+    lora_state = {name: p for name, p in unet.named_parameters() if "lora_" in name}
+    torch.save(lora_state, f"{output_dir}/lora.pt")
+
+
 class DreamBoothModel:
     def __init__(self, device, dtype=torch.float16):
         """
@@ -52,11 +104,11 @@ class DreamBoothModel:
         self.unet = UNet2DConditionModel.from_pretrained(MODEL_ID, subfolder="unet", torch_dtype=dtype).to(device)
         self.scheduler = DDPMScheduler.from_pretrained(MODEL_ID, subfolder="scheduler")
 
-    def load_finetuned_unet(self, output_dir: str, device, dtype=torch.float16):
+    def load_finetuned_unet(self, output_dir: str, device, dtype=torch.float16, rank: int = 4, alpha: int = 4):
         """
-        Load base UNet then overwrite with fine-tuned weights.
+        Inject LoRA structure into the base UNet, then load the saved LoRA adapter weights.
         """
-        self.unet = UNet2DConditionModel.from_pretrained(MODEL_ID, subfolder="unet", torch_dtype=dtype)
-        save = torch.load(f"{output_dir}/unet.pt")
-        self.unet.load_state_dict(save)
+        inject_lora(self.unet, rank=rank, alpha=alpha)
+        lora_state = torch.load(f"{output_dir}/lora.pt", map_location=device)
+        self.unet.load_state_dict(lora_state, strict=False)
         self.unet.to(device)

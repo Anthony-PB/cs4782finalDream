@@ -2,7 +2,7 @@ import torch
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-from model import save_unet, freeze_component, DreamBoothModel
+from model import freeze_component, DreamBoothModel, inject_lora, lora_parameters, DEFAULT_TARGET_MODULES
 from data import DreamBoothDataset
 from inference import checkpoint, validate
 
@@ -99,14 +99,20 @@ def training_loop(
     validate_every: int = 200,
     device: str = "cuda",
     dtype=torch.float16,
+    lora_rank: int = 4,
+    lora_alpha: int = 4,
+    lora_target_modules: set = DEFAULT_TARGET_MODULES,
 ):
-    # Load all components; freeze everything except unet
+    # Load all components; inject LoRA into unet; freeze everything else
     model = DreamBoothModel(device=device, dtype=dtype)
     freeze_component(model.text_encoder)
     freeze_component(model.vae)
+    freeze_component(model.unet)        # freeze all base UNet weights
+    inject_lora(model.unet, rank=lora_rank, alpha=lora_alpha, target_modules=lora_target_modules)
     model.unet.train()
 
-    optimizer = torch.optim.AdamW(model.unet.parameters(), lr=lr)
+    # Only the LoRA adapter parameters are trained (~thousands vs ~860M)
+    optimizer = torch.optim.AdamW(lora_parameters(model.unet), lr=lr)
 
     dataset = DreamBoothDataset(
         instance_dir=instance_dir,

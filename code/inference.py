@@ -1,14 +1,14 @@
 import os
 import torch
 from diffusers import StableDiffusionPipeline
-from model import DreamBoothModel, save_unet
+from model import DreamBoothModel, save_lora
 
 
 def checkpoint(unet, output_dir: str, step: int):
     # Call every N steps in the training loop to snapshot the current UNet weights
     step_dir = os.path.join(output_dir, f"step_{step}")
     os.makedirs(step_dir, exist_ok=True)
-    save_unet(unet, step_dir)
+    save_lora(unet, step_dir)
     print(f"Checkpoint saved at step {step} -> {step_dir}")
 
 
