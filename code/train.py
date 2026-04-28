@@ -3,21 +3,21 @@ import torch.nn.functional as F
 
 
 def dreambooth_loss(
-    unet,
-    scheduler,
-    subject_latents,
-    subject_encoder_hidden_states,
-    prior_latents,
-    prior_encoder_hidden_states,
+    unet,                           # the model being trained
+    scheduler,                      # owns the αt, σt noise tables
+    subject_latents,                # the 3-5 dog images encoded by VAE
+    subject_encoder_hidden_states,  # embeddings of "a [V] dog"
+    prior_latents,                  # generated generic dog images encoded by VAE
+    prior_encoder_hidden_states,    # embeddings of "a dog"
     device,
-    lam: float = 1.0,
+    lam: float = 1.0,               # λ in Equation 2 — weights prior loss
 ):
     """
     L_DB = E[||eps_theta(z_t, t, c) - eps||^2]
          + lambda * E[||eps_theta(z_pr_t, t, c_pr) - eps||^2]
     """
-    bsz = subject_latents.shape[0]
-    bsz_pr = prior_latents.shape[0]
+    bsz = subject_latents.shape[0] # subject images in batch
+    bsz_pr = prior_latents.shape[0] # prior images in batch
 
     t = torch.randint(0, scheduler.config.num_train_timesteps, (bsz,), device=device).long()
     t_pr = torch.randint(0, scheduler.config.num_train_timesteps, (bsz_pr,), device=device).long()
@@ -26,6 +26,7 @@ def dreambooth_loss(
     noise_pr = torch.randn_like(prior_latents)
 
     z_t = scheduler.add_noise(subject_latents, noise, t)
+    # Based on the noise scheduler add noise to the images inputs.
     z_pr_t = scheduler.add_noise(prior_latents, noise_pr, t_pr)
 
     noise_pred = unet(z_t, t, encoder_hidden_states=subject_encoder_hidden_states).sample
