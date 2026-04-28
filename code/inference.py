@@ -1,7 +1,7 @@
 import os
 import torch
 from diffusers import StableDiffusionPipeline
-from model import load_models, load_finetuned_unet, save_unet
+from model import DreamBoothModel, save_unet
 
 
 def checkpoint(unet, output_dir: str, step: int):
@@ -15,17 +15,18 @@ def checkpoint(unet, output_dir: str, step: int):
 def validate(unet, prompt: str, output_dir: str, step: int, device: str, dtype=torch.float16, num_images: int = 4):
     os.makedirs(output_dir, exist_ok=True)
 
-    # Load fresh frozen components — we only need the live training UNet, not a new one
-    tokenizer, text_encoder, vae, _, scheduler = load_models(device=device, dtype=dtype)
+    model = DreamBoothModel(device=device, dtype=dtype)
+    # patch in the unet parameter
+    model.unet = unet
 
     # Switch to eval mode so dropout/batchnorm don't interfere with image quality
-    unet.eval()
+    model.unet.eval()
     pipe = StableDiffusionPipeline(
-        vae=vae,
-        text_encoder=text_encoder,
-        tokenizer=tokenizer,
-        unet=unet,          # inject the live training UNet instead of the base one
-        scheduler=scheduler,
+        vae=model.vae,
+        text_encoder=model.text_encoder,
+        tokenizer=model.tokenizer,
+        unet=model.unet,          # inject the live training UNet instead of the base one
+        scheduler=model.scheduler,
         safety_checker=None,
         feature_extractor=None,
         requires_safety_checker=False,
@@ -47,16 +48,16 @@ def run_inference(checkpoint_dir: str, prompt: str, output_dir: str, device: str
     # Post-training: loads saved weights from disk rather than a live training UNet
     os.makedirs(output_dir, exist_ok=True)
 
-    tokenizer, text_encoder, vae, _, scheduler = load_models(device=device, dtype=dtype)
+    model = DreamBoothModel(device=device, dtype=dtype)
     # Overwrite the base UNet with the fine-tuned weights from the checkpoint
-    unet = load_finetuned_unet(checkpoint_dir, device=device, dtype=dtype)
+    model.load_finetuned_unet(checkpoint_dir, device=device, dtype=dtype)
 
     pipe = StableDiffusionPipeline(
-        vae=vae,
-        text_encoder=text_encoder,
-        tokenizer=tokenizer,
-        unet=unet,
-        scheduler=scheduler,
+        vae=model.vae,
+        text_encoder=model.text_encoder,
+        tokenizer=model.tokenizer,
+        unet=model.unet,
+        scheduler=model.scheduler,
         safety_checker=None,
         feature_extractor=None,
         requires_safety_checker=False,

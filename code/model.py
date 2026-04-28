@@ -52,13 +52,12 @@ class DreamBoothModel:
         self.vae = AutoencoderKL.from_pretrained(MODEL_ID, subfolder="vae", torch_dtype=dtype).to(device)
         self.unet = UNet2DConditionModel.from_pretrained(MODEL_ID, subfolder="unet", torch_dtype=dtype).to(device)
         self.scheduler = DDPMScheduler.from_pretrained(MODEL_ID, subfolder="scheduler")
-        self.model = None
 
     def load_finetuned_unet(self, output_dir: str, device, dtype=torch.float16):
         """
         Load base UNet then overwrite with fine-tuned weights.
         """
-        self.model = UNet2DConditionModel.from_pretrained(MODEL_ID, subfolder="unet", torch_dtype=dtype)
+        self.unet = UNet2DConditionModel.from_pretrained(MODEL_ID, subfolder="unet", torch_dtype=dtype)
         save = torch.load(f"{output_dir}/unet.pt")
-        self.model.load_state_dict(save)
-        self.model.to(device)
+        self.unet.load_state_dict(save)
+        self.unet.to(device)
