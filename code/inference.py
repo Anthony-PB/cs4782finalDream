@@ -53,7 +53,7 @@ def run_inference(checkpoint_dir: str, prompt: str, output_dir: str, device: str
 
     model = DreamBoothModel(device=device, dtype=dtype)
     # Overwrite the base UNet with the fine-tuned weights from the checkpoint
-    model.load_finetuned_unet(checkpoint_dir, device=device, dtype=dtype)
+    model.load_finetuned_unet(checkpoint_dir, device=device)
 
     pipe = StableDiffusionPipeline(
         vae=model.vae,

@@ -48,14 +48,18 @@ class LoRALinear(nn.Module):
     def __init__(self, linear: nn.Linear, rank: int = 4, alpha: int = 4):
         super().__init__()
         self.linear = linear
-        self.lora_A = nn.Linear(linear.in_features, rank, bias=False)
-        self.lora_B = nn.Linear(rank, linear.out_features, bias=False)
+        device = linear.weight.device
+        # lora params stay float32 so GradScaler can unscale them
+        self.lora_A = nn.Linear(linear.in_features, rank, bias=False).to(device=device)
+        self.lora_B = nn.Linear(rank, linear.out_features, bias=False).to(device=device)
         self.scale = alpha / rank
         nn.init.normal_(self.lora_A.weight, std=0.01)
         nn.init.zeros_(self.lora_B.weight)
 
     def forward(self, x):
-        return self.linear(x) + self.lora_B(self.lora_A(x)) * self.scale
+        # cast x to float32 for LoRA, then cast result back to match x's dtype
+        lora_out = self.lora_B(self.lora_A(x.float())).to(x.dtype)
+        return self.linear(x) + lora_out * self.scale
 
 
 DEFAULT_TARGET_MODULES = {"to_q", "to_k", "to_v", "to_out"}
