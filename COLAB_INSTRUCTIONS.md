@@ -19,8 +19,16 @@
 ## Step 2 — Enable GPU
 
 1. Click **Runtime → Change runtime type**
-2. Set **Hardware accelerator** to **T4 GPU**
+2. Set **Hardware accelerator** based on your `USE_LORA` choice:
+
+| Mode | Minimum GPU | Notes |
+|---|---|---|
+| `USE_LORA = True` | **T4** (free tier) | Trains only ~3–6 MB of adapters, fits in 16 GB |
+| `USE_LORA = False` | **A100** (Colab Pro+) | Full UNet fine-tune needs ~16 GB for weights + AdamW optimizer state alone — T4 will OOM |
+
 3. Click **Save**
+
+> **Recommendation:** Use `USE_LORA = True` on a free T4. Full fine-tune (`USE_LORA = False`) requires an A100 (40 GB) available on Colab Pro+.
 
 ---
 
@@ -49,8 +57,8 @@ CLASS_PROMPT = "a cat"
 
 You can also control whether LoRA is used:
 ```python
-USE_LORA = False  # default — full UNet fine-tune, slower but stronger
-USE_LORA = True   # LoRA adapters only, faster and saves only ~3-6 MB
+USE_LORA = False  # full UNet fine-tune — requires A100 (Colab Pro+), saves ~3.4 GB checkpoint
+USE_LORA = True   # LoRA adapters only — runs on free T4, saves ~3-6 MB checkpoint
 ```
 
 Run the **LoRA check cell** directly below to confirm the mode before training.
