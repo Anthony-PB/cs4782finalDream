@@ -8,13 +8,15 @@ import os
 # Cache models to avoid reloading
 _clip_model = None
 _clip_preprocess = None
+_clip_device = None
 _dino_model = None
 
 
 def load_clip():
-    global _clip_model, _clip_preprocess
+    global _clip_model, _clip_preprocess, _clip_device
     if _clip_model is None:
-        _clip_model, _clip_preprocess = clip.load("ViT-B/32")
+        _clip_device = "cuda" if torch.cuda.is_available() else "cpu"
+        _clip_model, _clip_preprocess = clip.load("ViT-B/32", device=_clip_device)
         _clip_model.eval()
     return _clip_model, _clip_preprocess
 
@@ -38,7 +40,7 @@ def compute_clip_i(generated_images, real_images):
     def get_embeddings(images):
         embeds = []
         for img in images:
-            img_tensor = preprocess(img).unsqueeze(0)
+            img_tensor = preprocess(img).unsqueeze(0).to(_clip_device)
             with torch.no_grad():
                 embed = model.encode_image(img_tensor)
             embeds.append(embed.squeeze())
@@ -106,14 +108,14 @@ def compute_clip_t(generated_images, prompts):
 
     text_embeds = []
     for prompt in prompts:
-        tokens = clip.tokenize([prompt])
+        tokens = clip.tokenize([prompt]).to(_clip_device)
         with torch.no_grad():
             embed = model.encode_text(tokens)
         text_embeds.append(embed.squeeze())
 
     img_embeds = []
     for img in generated_images:
-        img_tensor = preprocess(img).unsqueeze(0)
+        img_tensor = preprocess(img).unsqueeze(0).to(_clip_device)
         with torch.no_grad():
             embed = model.encode_image(img_tensor)
         img_embeds.append(embed.squeeze())

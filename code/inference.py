@@ -1,7 +1,7 @@
 import os
 import torch
-from diffusers import StableDiffusionPipeline
-from model import DreamBoothModel, save_lora, save_unet
+from diffusers import StableDiffusionPipeline, DDIMScheduler
+from model import DreamBoothModel, save_lora, save_unet, MODEL_ID
 from metrics import compute_clip_t
 
 
@@ -28,18 +28,27 @@ def validate(
 ):
     os.makedirs(output_dir, exist_ok=True)
 
+    # If full-finetune kept UNet in fp32 for stability, cast to inference dtype
+    # so the pipeline runs cleanly with the rest of the (fp16) components.
+    original_unet_dtype = next(unet.parameters()).dtype
+    needs_cast = original_unet_dtype != dtype
+    if needs_cast:
+        unet.to(dtype)
+
     model = DreamBoothModel(device=device, dtype=dtype)
     # patch in the unet parameter
     model.unet = unet
 
     # Switch to eval mode so dropout/batchnorm don't interfere with image quality
     model.unet.eval()
+    # DDPMScheduler is for training only — use DDIM for fast inference
+    inference_scheduler = DDIMScheduler.from_pretrained(MODEL_ID, subfolder="scheduler")
     pipe = StableDiffusionPipeline(
         vae=model.vae,
         text_encoder=model.text_encoder,
         tokenizer=model.tokenizer,
         unet=model.unet,  # inject the live training UNet instead of the base one
-        scheduler=model.scheduler,
+        scheduler=inference_scheduler,
         safety_checker=None,
         feature_extractor=None,
         requires_safety_checker=False,
@@ -58,6 +67,9 @@ def validate(
             clip_t = compute_clip_t(images, prompt)
             print(f"Validation CLIP-T at step {step}: {clip_t:.3f}")
 
+    # Restore training dtype so the next training step can keep using GradScaler
+    if needs_cast:
+        unet.to(original_unet_dtype)
     # Must switch back — forgetting this leaves the UNet in eval mode for the rest of training
     unet.train()
     print(f"Validation images saved to {output_dir}")
@@ -79,12 +91,13 @@ def run_inference(
     # Overwrite the base UNet with the fine-tuned weights from the checkpoint
     model.load_finetuned_unet(checkpoint_dir, device=device)
 
+    inference_scheduler = DDIMScheduler.from_pretrained(MODEL_ID, subfolder="scheduler")
     pipe = StableDiffusionPipeline(
         vae=model.vae,
         text_encoder=model.text_encoder,
         tokenizer=model.tokenizer,
         unet=model.unet,
-        scheduler=model.scheduler,
+        scheduler=inference_scheduler,
         safety_checker=None,
         feature_extractor=None,
         requires_safety_checker=False,
@@ -102,6 +115,7 @@ def run_inference(
             print(f"Inference CLIP-T: {clip_t:.3f}")
 
     print(f"Saved {num_images} images to {output_dir}")
+    return images
 
 
 if __name__ == "__main__":

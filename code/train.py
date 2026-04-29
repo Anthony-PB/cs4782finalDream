@@ -13,8 +13,6 @@ from data import DreamBoothDataset
 from inference import checkpoint, validate
 from torch.amp import autocast, GradScaler
 
-scaler = GradScaler()
-
 
 # This function is to turn the dataloader Dictionaries into batched tensors
 def collate_fn(examples):
@@ -115,7 +113,7 @@ def training_loop(
     validate_every: int = 200,
     device: str = "cuda",
     dtype=torch.float16,
-    use_lora: bool = True,
+    use_lora: bool = False,
     lora_rank: int = 4,
     lora_alpha: int = 4,
     lora_target_modules: set = DEFAULT_TARGET_MODULES,
@@ -134,10 +132,15 @@ def training_loop(
         )
         train_params = lora_parameters(model.unet)
     else:
-        train_params = model.unet.parameters()  # full fine-tune
+        # Full fine-tune: cast UNet to fp32 so GradScaler can unscale gradients.
+        # Gradient checkpointing keeps activation memory low enough for T4 (16 GB).
+        model.unet = model.unet.to(torch.float32)
+        model.unet.enable_gradient_checkpointing()
+        train_params = list(model.unet.parameters())
 
     model.unet.train()
     optimizer = torch.optim.AdamW(train_params, lr=lr)
+    scaler = GradScaler()  # fp32 trainable params + fp16 autocast in both modes
 
     dataset = DreamBoothDataset(
         instance_dir=instance_dir,
@@ -194,9 +197,10 @@ def training_loop(
                 lam=lam,
             )
 
-        # <-- MODIFIED: Use the scaler to backward the loss and step the optimizer
         optimizer.zero_grad()
         scaler.scale(loss).backward()
+        scaler.unscale_(optimizer)
+        torch.nn.utils.clip_grad_norm_(train_params, max_norm=1.0)
         scaler.step(optimizer)
         scaler.update()
 

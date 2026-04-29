@@ -1,16 +1,18 @@
 import os
 import torch
-from diffusers import StableDiffusionPipeline
-from model import DreamBoothModel
+from diffusers import StableDiffusionPipeline, DDIMScheduler
+from model import DreamBoothModel, MODEL_ID
 from metrics import compute_clip_i, compute_dino, compute_clip_t
 from PIL import Image
 import csv
+
+IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 
 
 def load_images_from_folder(folder_path):
     images = []
     for file in os.listdir(folder_path):
-        if file.endswith(".jpg"):
+        if os.path.splitext(file)[1].lower() in IMAGE_EXTENSIONS:
             img = Image.open(os.path.join(folder_path, file)).convert("RGB")
             images.append(img)
     return images
@@ -33,14 +35,14 @@ def main():
 
     # Load the fine-tuned model
     model = DreamBoothModel(device=device, dtype=dtype)
-    model.load_finetuned_unet(checkpoint_dir, device=device, dtype=dtype)
+    model.load_finetuned_unet(checkpoint_dir, device=device)
 
     pipe = StableDiffusionPipeline(
         vae=model.vae,
         text_encoder=model.text_encoder,
         tokenizer=model.tokenizer,
         unet=model.unet,
-        scheduler=model.scheduler,
+        scheduler=DDIMScheduler.from_pretrained(MODEL_ID, subfolder="scheduler"),
         safety_checker=None,
         feature_extractor=None,
         requires_safety_checker=False,

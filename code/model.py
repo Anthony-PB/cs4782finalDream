@@ -102,7 +102,7 @@ class DreamBoothModel:
         so each script has explicit control over what it freezes.
         """
         self.tokenizer = CLIPTokenizer.from_pretrained(MODEL_ID, subfolder="tokenizer")
-        self.text_encoder = CLIPTextModel.from_pretrained(MODEL_ID, subfolder="text_encoder", torch_dtype=dtype).to(
+        self.text_encoder = CLIPTextModel.from_pretrained(MODEL_ID, subfolder="text_encoder", dtype=dtype).to(
             device)
         self.vae = AutoencoderKL.from_pretrained(MODEL_ID, subfolder="vae", torch_dtype=dtype).to(device)
         self.unet = UNet2DConditionModel.from_pretrained(MODEL_ID, subfolder="unet", torch_dtype=dtype).to(device)
