@@ -77,8 +77,7 @@ def compute_dino(generated_images, real_images):
         for img in images:
             img_tensor = transform(img).unsqueeze(0)
             with torch.no_grad():
-                output = model(img_tensor)
-                embed = output[:, 0, :]  # CLS token
+                embed = model(img_tensor)  # returns CLS token directly as [batch, features]
             embeds.append(embed.squeeze())
         return embeds
 

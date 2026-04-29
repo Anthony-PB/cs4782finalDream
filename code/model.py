@@ -109,10 +109,12 @@ class DreamBoothModel:
         self.scheduler = DDPMScheduler.from_pretrained(MODEL_ID, subfolder="scheduler")
 
     def load_finetuned_unet(self, output_dir: str, device, rank: int = 4, alpha: int = 4):
-        """
-        Inject LoRA structure into the base UNet, then load the saved LoRA adapter weights.
-        """
-        inject_lora(self.unet, rank=rank, alpha=alpha)
-        lora_state = torch.load(f"{output_dir}/lora.pt", map_location=device)
-        self.unet.load_state_dict(lora_state, strict=False)
+        import os
+        if os.path.exists(f"{output_dir}/lora.pt"):
+            inject_lora(self.unet, rank=rank, alpha=alpha)
+            state = torch.load(f"{output_dir}/lora.pt", map_location=device)
+            self.unet.load_state_dict(state, strict=False)
+        else:
+            state = torch.load(f"{output_dir}/unet.pt", map_location=device)
+            self.unet.load_state_dict(state)
         self.unet.to(device)

@@ -19,28 +19,28 @@
 ## Step 2 — Enable GPU
 
 1. Click **Runtime → Change runtime type**
-2. Set **Hardware accelerator** based on your `USE_LORA` choice:
+2. Choose your GPU based on what you want to run:
 
-| Mode | Minimum GPU | Notes |
+| Goal | GPU | Tier |
 |---|---|---|
-| `USE_LORA = True` | **T4** (free tier) | Trains only ~3–6 MB of adapters, fits in 16 GB |
-| `USE_LORA = False` | **A100** (Colab Pro+) | Full UNet fine-tune needs ~16 GB for weights + AdamW optimizer state alone — T4 will OOM |
+| LoRA only | **T4** | Free |
+| Full fine-tune + LoRA comparison | **A100** | Colab Pro+ |
+
+> Full fine-tune requires A100 (40 GB). The fp32 UNet weights + AdamW optimizer state alone exceed T4's 16 GB — it will OOM.
 
 3. Click **Save**
-
-> **Recommendation:** Use `USE_LORA = True` on a free T4. Full fine-tune (`USE_LORA = False`) requires an A100 (40 GB) available on Colab Pro+.
 
 ---
 
 ## Step 3 — Install dependencies
 
-Run **cell 1** (the `pip install` cell). This installs diffusers, transformers, and CLIP. Takes ~1 minute.
+Run **cell 1** (`pip install`). Installs diffusers, transformers, and CLIP. Takes ~1 minute.
 
 ---
 
 ## Step 4 — Configure your subject
 
-Run **cell 3** (the config cell) and edit the four variables at the top before running it:
+Run **cell 3** and edit the variables before running:
 
 ```python
 SUBJECT_NAME    = "killian"               # any name, used for the data folder
@@ -49,27 +49,17 @@ CLASS_PROMPT    = "a white middle aged man"
 INSTANCE_PROMPT = f"a sks {CLASS_PROMPT}" # leave this line as-is
 ```
 
-**To switch subjects** (e.g. a cat), just change:
+**To switch subjects** (e.g. a cat):
 ```python
 CLASS_NAME   = "cat"
 CLASS_PROMPT = "a cat"
 ```
 
-You can also control whether LoRA is used:
-```python
-USE_LORA = False  # full UNet fine-tune — requires A100 (Colab Pro+), saves ~3.4 GB checkpoint
-USE_LORA = True   # LoRA adapters only — runs on free T4, saves ~3-6 MB checkpoint
-```
-
-Run the **LoRA check cell** directly below to confirm the mode before training.
-
-The cell prints the derived folder paths, prompts, and LoRA mode so you can confirm everything looks right before continuing.
-
 ---
 
 ## Step 5 — Upload source files
 
-When the **"Upload source files"** cell runs, a file picker will appear. Select all 6 files from the `code/` folder:
+When the **"Upload source files"** cell runs, select all 6 files from the `code/` folder:
 
 ```
 model.py
@@ -84,27 +74,52 @@ metrics.py
 
 ## Step 6 — Upload your subject photos
 
-When the **"Upload instance images"** cell runs, upload your 3–10 photos of the subject. They will be saved to `data/<SUBJECT_NAME>/` automatically.
+When the **"Upload instance images"** cell runs, upload your 3–5 photos. They are saved to `data/<SUBJECT_NAME>/` automatically.
 
 ---
 
-## Step 7 — Generate prior images (~15 min)
+## Step 7 — Generate prior images
 
-Run the **"Generate prior images"** cell. This generates 200 generic images of the class (e.g. "a white middle aged man") using the base Stable Diffusion model. These are used for prior-preservation loss during training so the model doesn't forget the broader class.
+Run the **"Generate prior images"** cell. Generates 200 generic class images used for prior-preservation loss.
 
-> You can reduce `num_images` to `50` if you want to go faster and don't mind slightly weaker prior preservation.
+| GPU | Time |
+|---|---|
+| T4 | ~15 min |
+| A100 | ~5 min |
+
+> You can reduce `num_images` to `50` to go faster at the cost of slightly weaker prior preservation.
 
 ---
 
-## Step 8 — Train (~10-15min)
+## Step 8 — Train full fine-tune (A100 only)
 
-Run the **"Train"** cell. It runs 800 steps of DreamBooth with LoRA and saves checkpoints every 200 steps to `checkpoints/`. Validation images are saved to `validation/` every 200 steps so you can track progress.
+Run the **"Train — Full Fine-Tune"** cell. Trains all UNet weights with gradient checkpointing enabled to fit in GPU memory.
+
+| GPU | Time |
+|---|---|
+| T4 | ❌ OOM |
+| A100 | ~20–25 min |
+
+Checkpoints saved every 200 steps to `checkpoints/full/`. Validation images saved to `validation/full/`.
 
 ---
 
-## Step 9 — Run inference
+## Step 9 — Train LoRA
 
-Run the **"Run inference"** cell. Edit `INFERENCE_PROMPT` to place your subject in any scene:
+Run the **"Train — LoRA"** cell. Trains only small adapter weights (~3–6 MB).
+
+| GPU | Time |
+|---|---|
+| T4 | ~10–15 min |
+| A100 | ~4–6 min |
+
+Checkpoints saved to `checkpoints/lora/`. Validation images saved to `validation/lora/`.
+
+---
+
+## Step 10 — Run inference
+
+Run the **"Inference"** cell. Edit `INFERENCE_PROMPT` to place your subject in any scene:
 
 ```python
 INFERENCE_PROMPT = f"{INSTANCE_PROMPT} on the moon"
@@ -112,24 +127,45 @@ INFERENCE_PROMPT = f"{INSTANCE_PROMPT} as an oil painting"
 INFERENCE_PROMPT = f"{INSTANCE_PROMPT} in a forest"
 ```
 
-4 images are generated and displayed inline, and saved to `outputs/`.
+Both models run on the same prompt. Outputs saved to `outputs/full/` and `outputs/lora/`.
 
 ---
 
-## Step 10 — Download outputs
+## Step 11 — Visual comparison
 
-After inference, download your results from the Colab file browser on the left sidebar:
+Run the **"Visual comparison"** cell. Displays a 2×4 grid — full fine-tune on top, LoRA on bottom — so you can compare subject fidelity and scene quality side by side.
 
-1. Click the **folder icon** (Files) in the left panel
-2. Navigate to `outputs/`
-3. Right-click any image → **Download**, or right-click the `outputs/` folder → **Download**
+---
 
-To also download checkpoints or validation images, do the same for `checkpoints/` and `validation/`.
+## Step 12 — Metrics comparison
+
+Run the **"Metrics comparison"** cell. Computes and prints a table:
+
+| Metric | What it measures |
+|---|---|
+| CLIP-I | Subject fidelity — similarity to your real photos |
+| DINO | Subject fidelity — feature-level identity match |
+| CLIP-T | Prompt fidelity — how well the scene matches the text |
+
+Higher is better for all three.
+
+---
+
+## Step 13 — Download outputs
+
+From the Colab file browser (left sidebar, folder icon):
+
+- `outputs/full/` — full fine-tune images
+- `outputs/lora/` — LoRA images
+- `checkpoints/` — saved model weights
+- `validation/` — per-step validation images from training
+
+Right-click any folder → **Download** to get everything at once.
 
 ---
 
 ## Notes
 
-- **Colab disconnects wipe all files.** If your session disconnects mid-run, you will need to re-upload files and restart from the beginning.
-- **Free Colab has GPU time limits.** If you get disconnected, consider running prior generation and training in the same session without leaving the tab idle.
-- The LoRA adapter weights are saved at `checkpoints/step_800/lora.pt` (~3–6 MB). These are what actually encodes your subject — much smaller than the full model.
+- **Colab disconnects wipe all files.** If your session drops mid-run you will need to re-upload files and restart from the beginning.
+- **Free Colab has GPU time limits.** Run prior generation and both training cells in one session without leaving the tab idle.
+- The LoRA checkpoint is `checkpoints/lora/step_800/lora.pt` (~3–6 MB). The full fine-tune checkpoint is `checkpoints/full/step_800/unet.pt` (~3.4 GB).
