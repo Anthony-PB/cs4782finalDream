@@ -1,0 +1,4 @@
+r=4,a=4
+CLIP-I     0.525    0.803  Subject fidelity — cosine similarity [0–1] between CLIP image embeddings of generated vs real photos
+DINO       0.266    0.668  Subject fidelity — cosine similarity [0–1] between DINO ViT features of generated vs real photos
+CLIP-T     0.313    0.305  Prompt fidelity — cosine similarity [0–1] between CLIP image embedding and CLIP text embedding of the prompt
