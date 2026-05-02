@@ -83,13 +83,15 @@ def run_inference(
     dtype=torch.float16,
     num_images: int = 4,
     compute_metrics: bool = False,
+    lora_rank: int = 4,
+    lora_alpha: int = 4,
 ):
     # Post-training: loads saved weights from disk rather than a live training UNet
     os.makedirs(output_dir, exist_ok=True)
 
     model = DreamBoothModel(device=device, dtype=dtype)
     # Overwrite the base UNet with the fine-tuned weights from the checkpoint
-    model.load_finetuned_unet(checkpoint_dir, device=device)
+    model.load_finetuned_unet(checkpoint_dir, device=device, rank=lora_rank, alpha=lora_alpha)
 
     inference_scheduler = DDIMScheduler.from_pretrained(MODEL_ID, subfolder="scheduler")
     pipe = StableDiffusionPipeline(
