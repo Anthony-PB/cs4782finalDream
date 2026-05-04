@@ -24,7 +24,6 @@ def validate(
     device: str,
     dtype=torch.float16,
     num_images: int = 4,
-    compute_metrics: bool = False,
 ):
     os.makedirs(output_dir, exist_ok=True)
 
@@ -63,9 +62,8 @@ def validate(
             image.save(os.path.join(output_dir, f"step_{step}_{i:02d}.jpg"))
             images.append(image)
 
-        if compute_metrics:
-            clip_t = compute_clip_t(images, prompt)
-            print(f"Validation CLIP-T at step {step}: {clip_t:.3f}")
+        clip_t = compute_clip_t(images, prompt)
+        print(f"Validation CLIP-T at step {step}: {clip_t:.3f}")
 
     # Restore training dtype so the next training step can keep using GradScaler
     if needs_cast:
@@ -73,6 +71,7 @@ def validate(
     # Must switch back — forgetting this leaves the UNet in eval mode for the rest of training
     unet.train()
     print(f"Validation images saved to {output_dir}")
+    return clip_t
 
 
 def run_inference(

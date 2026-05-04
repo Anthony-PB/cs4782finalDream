@@ -1,3 +1,4 @@
+import os
 import torch
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
@@ -7,6 +8,8 @@ from model import (
     DreamBoothModel,
     inject_lora,
     lora_parameters,
+    save_lora,
+    save_unet,
     DEFAULT_TARGET_MODULES,
 )
 from data import DreamBoothDataset
@@ -117,6 +120,7 @@ def training_loop(
     lora_rank: int = 4,
     lora_alpha: int = 4,
     lora_target_modules: set = DEFAULT_TARGET_MODULES,
+    early_stopping_patience: int = 3,  # validation steps without improvement before stopping
 ):
     model = DreamBoothModel(device=device, dtype=dtype)
     freeze_component(model.text_encoder)
@@ -154,6 +158,11 @@ def training_loop(
     dataloader_iter = iter(dataloader)
 
     print(f"Starting DreamBooth training for {num_steps} steps...")
+
+    best_clip_t = -float('inf')
+    best_step = 0
+    no_improve_count = 0
+    best_dir = os.path.join(output_dir, "best")
 
     for step in tqdm(range(1, num_steps + 1)):
         # Restart the iterator when exhausted
@@ -208,18 +217,45 @@ def training_loop(
             checkpoint(model.unet, output_dir, step, use_lora=use_lora)
 
         if step % validate_every == 0:
-            validate(
+            clip_t = validate(
                 model.unet,
                 instance_prompt,
                 validation_dir,
                 step,
                 device,
                 dtype,
-                compute_metrics=True,
             )
 
-    # Save final weights
-    checkpoint(model.unet, output_dir, num_steps, use_lora=use_lora)
+            if clip_t > best_clip_t:
+                best_clip_t = clip_t
+                best_step = step
+                no_improve_count = 0
+                checkpoint(model.unet, best_dir, step=0, use_lora=use_lora)
+                print(f"  New best CLIP-T: {best_clip_t:.3f} at step {best_step} — saved to {best_dir}")
+            else:
+                no_improve_count += 1
+                print(f"  No improvement ({no_improve_count}/{early_stopping_patience}), best still step {best_step} ({best_clip_t:.3f})")
+                if no_improve_count >= early_stopping_patience:
+                    print(f"Early stopping at step {step}.")
+                    break
+
+    # Load best checkpoint back into UNet before saving final weights
+    if best_step > 0:
+        print(f"Restoring best checkpoint from step {best_step} (CLIP-T: {best_clip_t:.3f})")
+        if use_lora:
+            best_state = torch.load(os.path.join(best_dir, "lora.pt"), map_location=device)
+            model.unet.load_state_dict(best_state, strict=False)
+        else:
+            best_state = torch.load(os.path.join(best_dir, "unet.pt"), map_location=device)
+            model.unet.load_state_dict(best_state)
+
+    final_dir = os.path.join(output_dir, "final")
+    os.makedirs(final_dir, exist_ok=True)
+    if use_lora:
+        save_lora(model.unet, final_dir)
+    else:
+        save_unet(model.unet, final_dir)
+    print(f"Final weights saved to {final_dir}")
     print("Training complete.")
 
 

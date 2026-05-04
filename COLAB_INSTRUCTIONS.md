@@ -168,4 +168,4 @@ Right-click any folder → **Download** to get everything at once.
 
 - **Colab disconnects wipe all files.** If your session drops mid-run you will need to re-upload files and restart from the beginning.
 - **Free Colab has GPU time limits.** Run prior generation and both training cells in one session without leaving the tab idle.
-- The LoRA checkpoint is `checkpoints/lora/step_800/lora.pt` (~3–6 MB). The full fine-tune checkpoint is `checkpoints/full/step_800/unet.pt` (~3.4 GB).
+- The final weights are always at `checkpoints/lora/final/lora.pt` (~3–6 MB) and `checkpoints/full/final/unet.pt` (~3.4 GB), regardless of when early stopping triggered.
