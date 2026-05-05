@@ -2,7 +2,7 @@ import os
 import torch
 from diffusers import StableDiffusionPipeline, DDIMScheduler
 from model import DreamBoothModel, save_lora, save_unet, MODEL_ID
-from metrics import compute_clip_t
+from metrics import compute_clip_i, compute_clip_t
 
 
 def checkpoint(unet, output_dir: str, step: int, use_lora: bool = True):
@@ -24,6 +24,7 @@ def validate(
     device: str,
     dtype=torch.float16,
     num_images: int = 4,
+    real_images=None,  # list of PIL Images from instance_dir; enables combined score
 ):
     os.makedirs(output_dir, exist_ok=True)
 
@@ -63,7 +64,13 @@ def validate(
             images.append(image)
 
         clip_t = compute_clip_t(images, prompt)
-        print(f"Validation CLIP-T at step {step}: {clip_t:.3f}")
+        if real_images is not None:
+            clip_i = compute_clip_i(images, real_images)
+            score = 0.5 * clip_i + 0.5 * clip_t
+            print(f"  Step {step} — CLIP-T: {clip_t:.3f}  CLIP-I: {clip_i:.3f}  combined: {score:.3f}")
+        else:
+            score = clip_t
+            print(f"  Step {step} — CLIP-T: {clip_t:.3f}")
 
     # Restore training dtype so the next training step can keep using GradScaler
     if needs_cast:
@@ -71,7 +78,7 @@ def validate(
     # Must switch back — forgetting this leaves the UNet in eval mode for the rest of training
     unet.train()
     print(f"Validation images saved to {output_dir}")
-    return clip_t
+    return score
 
 
 def run_inference(

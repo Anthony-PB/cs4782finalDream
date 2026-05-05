@@ -1,5 +1,7 @@
+import copy
 import os
 import torch
+from PIL import Image
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from tqdm import tqdm
@@ -157,12 +159,20 @@ def training_loop(
     )
     dataloader_iter = iter(dataloader)
 
+    img_exts = {".jpg", ".jpeg", ".png", ".webp"}
+    real_images = [
+        Image.open(os.path.join(instance_dir, f)).convert("RGB")
+        for f in os.listdir(instance_dir)
+        if os.path.splitext(f)[1].lower() in img_exts
+    ]
+
     print(f"Starting DreamBooth training for {num_steps} steps...")
 
-    best_clip_t = -float('inf')
+    best_score = -float('inf')  # 0.5*CLIP-I + 0.5*CLIP-T
     best_step = 0
     no_improve_count = 0
-    best_dir = os.path.join(output_dir, "best")
+    best_state_cache = None  # holds best LoRA state in memory (avoids filesystem issues)
+    best_dir = os.path.join(output_dir, "best")  # used for full fine-tune only
 
     for step in tqdm(range(1, num_steps + 1)):
         # Restart the iterator when exhausted
@@ -217,38 +227,42 @@ def training_loop(
             checkpoint(model.unet, output_dir, step, use_lora=use_lora)
 
         if step % validate_every == 0:
-            clip_t = validate(
+            score = validate(
                 model.unet,
                 instance_prompt,
                 validation_dir,
                 step,
                 device,
                 dtype,
+                real_images=real_images,
             )
 
-            if clip_t > best_clip_t:
-                best_clip_t = clip_t
+            if score > best_score:
+                best_score = score
                 best_step = step
                 no_improve_count = 0
-                os.makedirs(best_dir, exist_ok=True)
                 if use_lora:
-                    save_lora(model.unet, best_dir)
+                    # LoRA params are ~3 MB — keep best state in memory
+                    best_state_cache = copy.deepcopy(
+                        {n: p.detach().cpu().clone() for n, p in model.unet.named_parameters() if "lora_" in n}
+                    )
                 else:
+                    # Full UNet is 3.4 GB — save to disk instead
+                    os.makedirs(best_dir, exist_ok=True)
                     save_unet(model.unet, best_dir)
-                print(f"  New best CLIP-T: {best_clip_t:.3f} at step {best_step} — saved to {best_dir}")
+                print(f"  New best combined score: {best_score:.3f} at step {best_step}")
             else:
                 no_improve_count += 1
-                print(f"  No improvement ({no_improve_count}/{early_stopping_patience}), best still step {best_step} ({best_clip_t:.3f})")
+                print(f"  No improvement ({no_improve_count}/{early_stopping_patience}), best still step {best_step} (combined: {best_score:.3f})")
                 if no_improve_count >= early_stopping_patience:
                     print(f"Early stopping at step {step}.")
                     break
 
-    # Load best checkpoint back into UNet before saving final weights
+    # Restore best weights before saving final checkpoint
     if best_step > 0:
-        print(f"Restoring best checkpoint from step {best_step} (CLIP-T: {best_clip_t:.3f})")
+        print(f"Restoring best checkpoint from step {best_step} (combined score: {best_score:.3f})")
         if use_lora:
-            best_state = torch.load(os.path.join(best_dir, "lora.pt"), map_location=device)
-            model.unet.load_state_dict(best_state, strict=False)
+            model.unet.load_state_dict(best_state_cache, strict=False)
         else:
             best_state = torch.load(os.path.join(best_dir, "unet.pt"), map_location=device)
             model.unet.load_state_dict(best_state)
