@@ -230,7 +230,11 @@ def training_loop(
                 best_clip_t = clip_t
                 best_step = step
                 no_improve_count = 0
-                checkpoint(model.unet, best_dir, step=0, use_lora=use_lora)
+                os.makedirs(best_dir, exist_ok=True)
+                if use_lora:
+                    save_lora(model.unet, best_dir)
+                else:
+                    save_unet(model.unet, best_dir)
                 print(f"  New best CLIP-T: {best_clip_t:.3f} at step {best_step} — saved to {best_dir}")
             else:
                 no_improve_count += 1
