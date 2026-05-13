@@ -4,7 +4,7 @@ This repo re-implements DreamBooth (Ruiz et al., 2023), a method that fine-tunes
 
 ### Chosen Result
 
-We targeted the quantitative evaluation from Table 2 of the paper, which benchmarks subject fidelity (DINO, CLIP-I) and prompt fidelity (CLIP-T) against Textual Inversion and real images, the core evidence for DreamBooth’s superiority over prior personalization methods.
+We targeted the quantitative evaluation from Table 2 of the paper, which benchmarks subject fidelity (DINO, CLIP-I) and prompt fidelity (CLIP-T) against Textual Inversion and real images, the core evidence for DreamBooth's superiority over prior personalization methods.
 
 | Method                               |     DINO↑ |   CLIP-I↑ |   CLIP-T↑ |
 | ------------------------------------ | --------: | --------: | --------: |
@@ -24,11 +24,17 @@ We fine-tune only the UNet of Stable Diffusion v1.5 using LoRA adapters (ranks r
 
 ### Reproduction Steps
 
-Requires a CUDA GPU with ≥16 GB VRAM. Install dependencies with `pip install -r requirements.txt`, then run `code/generate_prior.py` to generate class images, `code/train.py` to fine-tune, and `code/inference.py` to generate images from a saved checkpoint. Edit the `__main__` block in each script to set subject paths, prompts, and hyperparameters.
+**GPU requirements:**
+- LoRA fine-tune: confirmed on a free Colab T4 (16 GB); lower VRAM may also work
+- Full fine-tune: confirmed on a Colab Pro+ A100 (40 GB); runs out of memory on a T4 (16 GB)
+
+Install dependencies with `pip install -r requirements.txt`, then run `code/generate_prior.py` to generate class images, `code/train.py` to fine-tune, and `code/inference.py` to generate images from a saved checkpoint. Edit the `__main__` block in each script to set subject paths, prompts, and hyperparameters.
+
+For step-by-step instructions on running everything through the provided Colab notebook, see `COLAB_INSTRUCTIONS.md`.
 
 ### Results/Insights
 
-Our LoRA re-implementation matches or exceeds the paper’s SD baseline on object subjects (Dog6: CLIP-I 0.865 vs. 0.803, DINO 0.770 vs. 0.668) while achieving near-paper prompt fidelity; human face identity (Killian: CLIP-I 0.590, DINO 0.316) remains the primary shortfall.
+Our LoRA re-implementation matches or exceeds the paper's SD baseline on object subjects (Dog6: CLIP-I 0.865 vs. 0.803, DINO 0.770 vs. 0.668) while achieving near-paper prompt fidelity; human face identity (Killian: CLIP-I 0.590, DINO 0.316) remains the primary shortfall.
 
 | Subject | Method | DINO↑ | CLIP-I↑ | CLIP-T↑ |
 | --------------- | ----------- | ----: | ------: | ------: |
@@ -45,10 +51,10 @@ LoRA fine-tuning on publicly available SD v1.5 matches the paper's full fine-tun
 
 ### References
 
-- Ruiz, Nataniel, et al. ‘DreamBooth: Fine Tuning Text-to-Image Diffusion Models for Subject-Driven Generation’. arXiv [Cs.CV], 2023, arxiv.org/abs/2208.12242. arXiv.
-- Hu, Edward J., et al. ‘LoRA: Low-Rank Adaptation of Large Language Models’. arXiv [Cs.CL], 2021, arxiv.org/abs/2106.09685. arXiv.
-- “Introduction to 🤗Diffusers.” Diffusion Course · Hugging Face, huggingface.co/learn/diffusion-course/unit1/2.
+- Ruiz, Nataniel, et al. 'DreamBooth: Fine Tuning Text-to-Image Diffusion Models for Subject-Driven Generation'. arXiv [Cs.CV], 2023, arxiv.org/abs/2208.12242. arXiv.
+- Hu, Edward J., et al. 'LoRA: Low-Rank Adaptation of Large Language Models'. arXiv [Cs.CL], 2021, arxiv.org/abs/2106.09685. arXiv.
+- "Introduction to Diffusers." Diffusion Course · Hugging Face, huggingface.co/learn/diffusion-course/unit1/2.
 
 ### Acknowledgements
 
-This project was completed as part of Cornell University’s CS 4782 (Deep Learning), Spring 2026. Group members: Alex McGowan (acm355), Anthony Paredes-Bautista (ap2357), August Ehrlich (ae427), and Nathnael Tesfaw (nbt26).
+This project was completed as part of Cornell University's CS 4782 (Deep Learning), Spring 2026. Group members: Alex McGowan (acm355), Anthony Paredes-Bautista (ap2357), August Ehrlich (ae427), and Nathnael Tesfaw (nbt26).
