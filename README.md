@@ -1,66 +1,60 @@
 ### Introduction
-- Purpose of this Git repo (mention how this is a project that attempts to re-implement your paper of choice)
-- Introduce the paper chosen and its main contribution.
 
-This github repo recreates DreamBooth (from the paper "DreamBooth: Fine Tuning Text-to-Image Diffusion Models for Subject-Driven Generation" by Nataniel Ruiz et al.), which fine tunes diffusion models to be able to generate specific subjects in novel environments from very few examples (3-5 to be specific).
+This repo re-implements DreamBooth (Ruiz et al., 2023), a method that fine-tunes a text-to-image diffusion model on just 3–5 images of a specific subject using a unique token, enabling generation of that subject in novel scenes and contexts.
 
 ### Chosen Result
-- Identify the specific result you aimed to reproduce and its significance in the context of the paper’s
-main contribution(s).
-- Include the relevant figure, table, or equation reference from the original paper.
 
-DreamBooth is very effective at preserving unique features of a specific subject while placing them in unique environments unlike those in any of the training examples. How well this is done can be measured by subject and prompt fidelity metrics that the original paper invented.
-How well the original implementation performed at these is shown in the following tables.
+We targeted the quantitative evaluation from Table 2 of the paper, which benchmarks subject fidelity (DINO, CLIP-I) and prompt fidelity (CLIP-T) against Textual Inversion and real images, the core evidence for DreamBooth's superiority over prior personalization methods.
 
-| Method | DINO↑ | CLIP-I↑ | CLIP-T↑ |
-|---|---:|---:|---:|
-| Real Images | 0.774 | 0.885 | N/A |
-| DreamBooth (Imagen) | **0.696** | **0.812** | **0.306** |
-| DreamBooth (Stable Diffusion) | 0.668 | 0.803 | 0.305 |
-| Textual Inversion (Stable Diffusion) | 0.569 | 0.780 | 0.255 |
+| Method                               |     DINO↑ |   CLIP-I↑ |   CLIP-T↑ |
+| ------------------------------------ | --------: | --------: | --------: |
+| Real Images                          |     0.774 |     0.885 |       N/A |
+| DreamBooth (Stable Diffusion)        |     0.668 |     0.803 |     0.305 |
+| Textual Inversion (Stable Diffusion) |     0.569 |     0.780 |     0.255 |
 
-**Table 1.** Subject fidelity (DINO, CLIP-I) and prompt fidelity (CLIP-T, CLIP-T-L) quantitative metric comparison.
-
-| Method | Subject Fidelity↑ | Prompt Fidelity↑ |
-|---|---:|---:|
-| DreamBooth (Stable Diffusion) | **68%** | **81%** |
-| Textual Inversion (Stable Diffusion) | 22% | 12% |
-| Undecided | 10% | 7% |
-
-**Table 2.** Subject fidelity and prompt fidelity user preference.
+**Table 2 (from paper).** Subject fidelity (DINO, CLIP-I) and prompt fidelity (CLIP-T), the targets we reproduce.
 
 ### GitHub Contents
-• Make a brief note about the content structure of your project.
 
-`code/` contains all the code of the re-implementation
-`data/` contains the dataset from the original paper in `data/dreambooth-dataset/` and an extra dataset that we added in `data/killian/`.
-`poster/` contains a poster summarizing this project
-`report/` contains a report explaing the project in more depth than is done here.
-`results/` contains results of our testing (TODO)
+`code/`, all training, inference, and evaluation scripts; `data/`, official DreamBooth dataset (30 subjects) plus our added `killian/` subject; `results/`, metric outputs across LoRA ranks; `poster/` and `report/`, project writeups.
 
 ### Re-implementation Details
-- Describe your approach to re-implementation or experimentation.
-- Include key details about models, datasets, tools, and evaluation metrics.
-- Mention any challenges or modifications made to the original approach.
+
+We fine-tune only the UNet of Stable Diffusion v1.5 using LoRA adapters (ranks r ∈ {4, 8, 16, 32}, ~0.3M params) injected into all attention projections, trained for 800 steps with AdamW (lr=5e-6) on the prior preservation loss using the special token `"sks"`, and evaluate with DINO, CLIP-I, and CLIP-T on the official 30-subject DreamBooth dataset plus our added human subject.
 
 ### Reproduction Steps
-As meta as this section is, it essentially documents steps someone would need to follow to implement your GitHub repo in a local environment.
-- Describe ”how someone using your GitHub can re-implement your re-implementation?”
-- Provide instructions for running your code, including any dependencies, required libraries, and command line arguments.
-- Specify the computational resources (e.g., GPU) needed to reproduce your results.
+
+**GPU requirements:**
+- LoRA fine-tune: confirmed on a free Colab T4 (16 GB); lower VRAM may also work
+- Full fine-tune: confirmed on a Colab Pro+ A100 (40 GB); runs out of memory on a T4 (16 GB)
+
+Install dependencies with `pip install -r requirements.txt`, then run `code/generate_prior.py` to generate class images, `code/train.py` to fine-tune, and `code/inference.py` to generate images from a saved checkpoint. Edit the `__main__` block in each script to set subject paths, prompts, and hyperparameters.
+
+For step-by-step instructions on running everything through the provided Colab notebook, see `COLAB_INSTRUCTIONS.md`.
 
 ### Results/Insights
-- Present your re-implementation results as a comparison to the original paper’s findings. Describes ”what can someone expect as the end-result of using your GitHub repo?”
+
+Our LoRA re-implementation matches or exceeds the paper's SD baseline on object subjects (Dog6: CLIP-I 0.865 vs. 0.803, DINO 0.770 vs. 0.668) while achieving near-paper prompt fidelity; human face identity (Killian: CLIP-I 0.590, DINO 0.316) remains the primary shortfall.
+
+| Subject | Method | DINO↑ | CLIP-I↑ | CLIP-T↑ |
+| --------------- | ----------- | ----: | ------: | ------: |
+| Dog6 Beach | LoRA r=4 | 0.770 | 0.865 | 0.289 |
+| Dog6 Beach | LoRA r=32 | 0.797 | 0.881 | 0.281 |
+| Dog6 Beach | Paper (SD) | 0.668 | 0.803 | 0.305 |
+| Killian (human) | LoRA r=4 | 0.316 | 0.590 | 0.301 |
+| Killian (human) | LoRA r=32 | 0.385 | 0.619 | 0.301 |
+| Killian (human) | Paper (SD) | 0.668 | 0.803 | 0.305 |
 
 ### Conclusion
-- Summarize the key takeaways from your re-implementation effort and the lessons learned.
+
+LoRA fine-tuning on publicly available SD v1.5 matches the paper's full fine-tune baseline on object subjects while cutting trainable parameters by ~3000×, though quantitative metrics understate qualitative differences between ranks, highlighting the limits of automated evaluation for generative models.
 
 ### References
-- Include a list of references, including the original paper and any additional resources used in your re-implementation.
+
+- Ruiz, Nataniel, et al. 'DreamBooth: Fine Tuning Text-to-Image Diffusion Models for Subject-Driven Generation'. arXiv [Cs.CV], 2023, arxiv.org/abs/2208.12242. arXiv.
+- Hu, Edward J., et al. 'LoRA: Low-Rank Adaptation of Large Language Models'. arXiv [Cs.CL], 2021, arxiv.org/abs/2106.09685. arXiv.
+- "Introduction to Diffusers." Diffusion Course · Hugging Face, huggingface.co/learn/diffusion-course/unit1/2.
 
 ### Acknowledgements
-- Recognition goes a long way in setting up the context of your work. Your acknowledgements also act as an indirect validation about the quality of the work. For e.g., having done this project as part of coursework is a sign that the work was potentially peer-reviewed or graded- i.e. added authenticity.
 
-Ruiz, Nataniel, et al. ‘DreamBooth: Fine Tuning Text-to-Image Diffusion Models for Subject-Driven Generation’. arXiv [Cs.CV], 2023, arxiv.org/abs/2208.12242. arXiv.
-
-https://www.cs.cornell.edu/courses/cs4782/2026sp/docs/final_deliverables.pdf
+This project was completed as part of Cornell University's CS 4782 (Deep Learning), Spring 2026. Group members: Alex McGowan (acm355), Anthony Paredes-Bautista (ap2357), August Ehrlich (ae427), and Nathnael Tesfaw (nbt26).
